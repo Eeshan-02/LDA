@@ -3,9 +3,40 @@ import pandas as pd
 from bengali_stemmer.rafikamal2014 import RafiStemmer
 import docx
 import string
+import numpy as np
 
-FILE_NAME = r"Datasets/thesis_dataset_kalerkantho_new.csv"
+FILE_NAME = r"Datasets/thesis_dataset_prothomalo.csv"
 STOP_WORD_LIST_DIR = r"Stopwords/StopWords.docx"
+
+
+def boost_words_in_eta(eta, dictionary, boost_words):
+    for i, word_list in enumerate(boost_words):
+        boost_word_id_list = []
+        print("{} is in {}".format(i, word_list))
+
+
+        uniq, count = np.unique(eta, return_counts=True)
+        print(dict(zip(uniq, count)))
+
+        #print([list(dictionary.keys())[list(dictionary.values()).index(each_word)] for each_word in word_list])
+
+        for each_word in word_list:
+
+            try:
+                word_id = list(dictionary.keys())[list(dictionary.values()).index(each_word)]
+                print(word_id)
+                boost_word_id_list.append(word_id)
+
+            except ValueError:
+                print("{} Not found in Dictionary ".format(each_word))
+
+        for word in boost_word_id_list:
+            eta[i][word] = 0.75
+
+    uniq, count = np.unique(eta, return_counts=True)
+    print(dict(zip(uniq, count)))
+
+    return eta
 
 def prepare_bag_of_words(processed_docs, dictionary):
     return [dictionary.doc2bow(doc) for doc in processed_docs]
@@ -62,6 +93,9 @@ def punctuation_remover(text):
     return text.translate(str.maketrans(' ', ' ', BENGALI_PUNCTUATION+BENGALI_NUMERALS))
 
 if __name__ == '__main__':
+
+    NUM_TOPICS = 3
+
     pd_document = read_doc_as_pandasDF(FILE_NAME)
     smaller_documents = pd_document
 
@@ -79,7 +113,7 @@ if __name__ == '__main__':
 
     # Adjust no_below and no_above
     dictionary = gensim.corpora.Dictionary(processed_docs)
-    dictionary.filter_extremes(no_below=2, no_above=0.5, keep_n=100000)
+    dictionary.filter_extremes(no_below=.10, no_above=0.5, keep_n=100000)
 
     print(dictionary)
 
@@ -88,12 +122,36 @@ if __name__ == '__main__':
     print(" bow corpus number 5 entry:", end=" ")
     print(bow_corpus[5])
 
-    lda_model = gensim.models.LdaMulticore(bow_corpus, num_topics=3, id2word=dictionary, passes=2, workers=3)
+    eta = np.ones((NUM_TOPICS, len(dictionary))) * 0.1
+    print("Shape of eta is {}".format(eta.shape))
+    print("type of dictionary {}".format(type(dictionary)))
+    print(eta)
+
+    boost_words =[
+        ['অধিনায়ক', 'মেসি', 'ক্রিকেট', 'জাতীয়', 'রান', 'উইকেট'],
+        ['মূলধন', 'বিনিয়োগ', 'শেয়ার', 'আইন', 'টাকা', 'শতাংশ', 'ব্যাংক', 'কো', 'পণ্য']
+
+    ]
+    boosed_eta = boost_words_in_eta(eta, dictionary, boost_words)
+
+
+    lda_model = gensim.models.LdaMulticore(bow_corpus, num_topics=NUM_TOPICS, id2word=dictionary, passes=2, workers=3)
 
     print("LDA Model:")
 
-    for idx in range(3):
+    for idx in range(NUM_TOPICS):
         # Print the first 10 most representative topics
         print("Topic #%s:" % idx, lda_model.print_topic(idx, 10))
 
     print("=" * 20)
+
+    lda_model = gensim.models.LdaMulticore(bow_corpus, num_topics=NUM_TOPICS, id2word=dictionary, passes=2, workers=3, eta=eta)
+
+    print("LDA Model:")
+
+    for idx in range(NUM_TOPICS):
+        # Print the first 10 most representative topics
+        print("Topic #%s:" % idx, lda_model.print_topic(idx, 10))
+
+    print("=" * 20)
+
